@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pass detection if bun.lock or bun.lockb exists.
+set -eo pipefail
+
+app_dir="${CNB_APP_DIR:-.}"
+
+if [[ -f "${app_dir}/bun.lock" ]] || [[ -f "${app_dir}/bun.lockb" ]]; then
+    exit 0
+fi
+
+echo "no bun lockfile found"
+exit 100

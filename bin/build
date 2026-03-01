@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Install Bun, fetch dependencies, run build scripts.
+set -eo pipefail
+
+layers_dir="$1"
+platform_dir="$2"
+app_dir="${CNB_APP_DIR:-.}"
+
+bun_layer="${layers_dir}/bun"
+deps_layer="${layers_dir}/deps"
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+log()  { echo "-----> $1"; }
+info() { echo "       $1"; }
+
+has_script() {
+    [[ -f "${app_dir}/package.json" ]] &&
+        grep -q "\"$1\"" "${app_dir}/package.json" 2>/dev/null
+}
+
+# ── resolve version ──────────────────────────────────────────────────────────
+
+resolve_version() {
+    # BUN_VERSION env (build-time) > .bun-version file > latest
+    if [[ -d "${platform_dir}/env" ]]; then
+        for f in "${platform_dir}/env/BUN_VERSION" "${platform_dir}/env/BUN_VERSION.override"; do
+            [[ -f "$f" ]] && cat "$f" && return
+        done
+    fi
+    [[ -f "${app_dir}/.bun-version" ]] && tr -d '[:space:]' < "${app_dir}/.bun-version" && return
+    echo "latest"
+}
+
+# ── install bun ──────────────────────────────────────────────────────────────
+
+install_bun() {
+    local version="$1"
+    mkdir -p "${bun_layer}/bin"
+
+    # cache hit?
+    if [[ -f "${bun_layer}/version" ]] && [[ "$(cat "${bun_layer}/version")" == "${version}" ]] && [[ -x "${bun_layer}/bin/bun" ]]; then
+        info "using cached bun ${version}"
+        return
+    fi
+
+    log "installing bun ${version}"
+
+    local arch
+    case "$(uname -m)" in
+        x86_64)          arch="x64" ;;
+        aarch64|arm64)   arch="aarch64" ;;
+        *) echo "unsupported arch: $(uname -m)" && exit 1 ;;
+    esac
+
+    local file="bun-linux-${arch}"
+    local url
+    if [[ "${version}" == "latest" ]]; then
+        url="https://github.com/oven-sh/bun/releases/latest/download/${file}.zip"
+    else
+        url="https://github.com/oven-sh/bun/releases/download/bun-v${version#v}/${file}.zip"
+    fi
+
+    local tmp; tmp="$(mktemp -d)"
+    curl -fsSL "${url}" -o "${tmp}/bun.zip"
+    unzip -qo "${tmp}/bun.zip" -d "${tmp}"
+    mv "${tmp}/${file}/bun" "${bun_layer}/bin/bun"
+    chmod +x "${bun_layer}/bin/bun"
+    rm -rf "${tmp}"
+
+    echo "${version}" > "${bun_layer}/version"
+    info "installed bun $("${bun_layer}/bin/bun" --version 2>/dev/null || echo "${version}")"
+}
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
+version="$(resolve_version)"
+install_bun "${version}"
+
+cat > "${bun_layer}.toml" <<EOF
+[types]
+launch = true
+build = true
+cache = true
+EOF
+
+export PATH="${bun_layer}/bin:${PATH}"
+
+# deps
+log "installing dependencies"
+cd "${app_dir}"
+
+mkdir -p "${deps_layer}"
+cat > "${deps_layer}.toml" <<EOF
+[types]
+launch = true
+build = true
+cache = true
+EOF
+
+if [[ -f "bun.lock" ]] || [[ -f "bun.lockb" ]]; then
+    bun install --frozen-lockfile
+else
+    bun install
+fi
+
+# build scripts (heroku convention)
+has_script "heroku-prebuild"  && log "running heroku-prebuild"  && bun run heroku-prebuild
+has_script "build"            && log "running build"            && bun run build
+has_script "heroku-postbuild" && log "running heroku-postbuild" && bun run heroku-postbuild
+
+# only set a default process if nothing else is handling it
+if has_script "start" && [[ ! -f "${app_dir}/Procfile" ]] && [[ ! -f "${app_dir}/Procfile.ancla" ]]; then
+    cat > "${layers_dir}/launch.toml" <<EOF
+[[processes]]
+type = "web"
+command = ["bun", "start"]
+default = true
+EOF
+fi
+
+log "done"

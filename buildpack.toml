@@ -1,0 +1,20 @@
+api = "0.10"
+
+[buildpack]
+id = "sidequest/bun"
+version = "0.1.0"
+name = "Bun"
+homepage = "https://github.com/SideQuest-Group/cnb-bun"
+description = "Installs Bun, runs dependency install, and executes build scripts."
+keywords = ["bun", "javascript", "typescript"]
+
+[[stacks]]
+id = "*"
+
+[[targets]]
+os = "linux"
+arch = "amd64"
+
+[[targets]]
+os = "linux"
+arch = "arm64"
