@@ -67,6 +67,11 @@ cnb-bun won't set a default process when it sees a `Procfile` or `Procfile.ancla
 - Any CNB builder that supports the [Buildpack API 0.10](https://github.com/buildpacks/spec/blob/main/buildpack.md)
 - Tested with `heroku/builder:24`
 
+## Links
+
+- Repo: [github.com/SideQuest-Group/cnb-bun](https://github.com/SideQuest-Group/cnb-bun)
+- Quick link: [get.ancla.dev/cnb-bun](https://get.ancla.dev/cnb-bun)
+
 ## Thats it
 
 Three files, ~150 lines of bash. Read the source if somethings unclear — its short.
